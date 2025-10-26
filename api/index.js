@@ -1,50 +1,50 @@
-// api/index.js  (Vercel Serverless Function)
+// api/index.js — fixed for proper stream forwarding
+
+export const config = {
+  api: {
+    bodyParser: false, // important for file uploads
+  },
+};
 
 export default async function handler(req, res) {
-  // CORS (so your browser can call this function)
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST,GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', '*');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  if (req.method === "OPTIONS") return res.status(200).end();
 
-  // Quick health check for GET /api
-  if (req.method === 'GET') {
-    return res.status(200).json({ ok: true, message: 'proxy up' });
+  if (req.method === "GET") {
+    return res.status(200).json({ ok: true, message: "proxy up" });
   }
 
-  // Real upload → Reality Defender
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   const apiKey = process.env.RD_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'RD_KEY env var is missing on Vercel' });
+    return res.status(500).json({ error: "RD_KEY env var missing" });
   }
 
   try {
-    const providerUrl = 'https://api.realitydefender.com/api/v1/upload';
+    const providerUrl = "https://api.realitydefender.com/api/v1/upload";
 
-    // IMPORTANT: forward the incoming Content-Type (multipart/form-data) to RD
-    const ct = req.headers['content-type'] || 'application/octet-stream';
-
-    const upstream = await fetch(providerUrl, {
-      method: 'POST',
+    // Forward the request stream correctly
+    const upstreamResponse = await fetch(providerUrl, {
+      method: "POST",
       headers: {
-        'Authorization': 'Bearer ' + apiKey,
-        'Content-Type': ct
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": req.headers["content-type"] || "application/octet-stream",
       },
-      // pass the raw stream through
-      body: req
+      body: req,
     });
 
-    const contentType = upstream.headers.get('content-type') || 'text/plain';
-    const bodyText = await upstream.text();
+    const resultText = await upstreamResponse.text();
 
-    res.status(upstream.status);
-    res.setHeader('Content-Type', contentType);
-    return res.send(bodyText);
+    res.status(upstreamResponse.status);
+    res.setHeader("Content-Type", upstreamResponse.headers.get("content-type") || "application/json");
+    res.send(resultText);
   } catch (err) {
-    return res.status(500).json({ error: String(err) });
+    console.error("Proxy error:", err);
+    res.status(500).json({ error: err.message });
   }
 }
